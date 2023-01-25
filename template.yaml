@@ -1,0 +1,274 @@
+Resources:
+  UpdatePhoneState:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: UpdatePhoneState
+      CodeUri: src/UpdatePhoneState
+      Handler: handler.handler
+      Runtime: python3.9
+      MemorySize: 512
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          TABLE_NAME: '!Ref PhoneWifiConnectionState'
+          TABLE_ARN: '!GetAtt PhoneWifiConnectionState.Arn'
+          FUNCTION_NAME: '!Ref CheckRoombaExecutionCriteria'
+          FUNCTION_ARN: '!GetAtt CheckRoombaExecutionCriteria.Arn'
+          TABLE_NAME_2: !Ref PhoneWifiConnectionState
+          TABLE_ARN_2: !GetAtt PhoneWifiConnectionState.Arn
+          STATE_MACHINE_NAME: !GetAtt RoombaCleaningJobScheduler.Name
+          STATE_MACHINE_ARN: !Ref RoombaCleaningJobScheduler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhoneWifiConnectionState
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhoneWifiConnectionState
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: !GetAtt RoombaCleaningJobScheduler.Name
+  UpdatePhoneStateLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UpdatePhoneState}
+  CheckRoombaExecutionCriteria:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: CheckRoombaExecutionCriteria
+      CodeUri: src/CheckRoombaExecutionCriteria
+      Handler: handler.handler
+      Runtime: python3.9
+      MemorySize: 512
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          TABLE_NAME: '!Ref PhoneWifiConnectionState'
+          TABLE_ARN: '!GetAtt PhoneWifiConnectionState.Arn'
+          FUNCTION_NAME: '!Ref ExecuteRoombaCleaningJob'
+          FUNCTION_ARN: '!GetAtt ExecuteRoombaCleaningJob.Arn'
+          TABLE_NAME_2: '!Ref PhoneWifiConnectionState'
+          TABLE_ARN_2: '!GetAtt PhoneWifiConnectionState.Arn'
+          TABLE_NAME_3: '!Ref RoomingCleaningJobHistory'
+          TABLE_ARN_3: '!GetAtt RoomingCleaningJobHistory.Arn'
+          TABLE_NAME_4: '!Ref PhoneWifiConnectionState'
+          TABLE_ARN_4: '!GetAtt PhoneWifiConnectionState.Arn'
+          TABLE_NAME_5: '!Ref RoomingCleaningJobHistory'
+          TABLE_ARN_5: '!GetAtt RoomingCleaningJobHistory.Arn'
+          TABLE_NAME_6: !Ref RoomingCleaningJobHistory
+          TABLE_ARN_6: !GetAtt RoomingCleaningJobHistory.Arn
+          TABLE_NAME_7: !Ref PhoneWifiConnectionState
+          TABLE_ARN_7: !GetAtt PhoneWifiConnectionState.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhoneWifiConnectionState
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhoneWifiConnectionState
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhoneWifiConnectionState
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoomingCleaningJobHistory
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhoneWifiConnectionState
+  CheckRoombaExecutionCriteriaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CheckRoombaExecutionCriteria}
+  ExecuteRoombaCleaningJob:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: ExecuteRoombaCleaningJob
+      CodeUri: src/ExecuteRoombaCleaningJob
+      Handler: handler.handler
+      Runtime: python3.9
+      MemorySize: 512
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref RoomingCleaningJobHistory
+          TABLE_ARN: !GetAtt RoomingCleaningJobHistory.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoomingCleaningJobHistory
+  ExecuteRoombaCleaningJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExecuteRoombaCleaningJob}
+  PhoneWifiConnectionState:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  InvokeCriteriaCheckHourly:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      ScheduleExpression: rate(1 hour)
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref RoombaCleaningJobScheduler
+        RoleArn: !GetAtt InvokeCriteriaCheckHourlyToRoombaCleaningJobSchedulerRole.Arn
+  RoomingCleaningJobHistory:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: device_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: device_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  RoombaCleaningJobScheduler:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Definition:
+        Comment: State machine to check Roomba execution criteria and run cleaning job
+        StartAt: Check Invocation Type
+        TimeoutSeconds: 500
+        States:
+          Check Invocation Type:
+            Type: Choice
+            Choices:
+              - Variable: $.invocation_type
+                StringEquals: update_status
+                Next: Wait 3 minutes
+              - Variable: $.invocation_type
+                StringEquals: hourly
+                Next: Check Roomba Execution Criteria
+            Default: Fail
+          Wait 3 minutes:
+            Type: Wait
+            Seconds: 180
+            Next: Check Roomba Execution Criteria
+          Check Roomba Execution Criteria:
+            Type: Task
+            Next: Check run_cleaning_job
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: ${CheckRoombaExecutionCriteriaArn}
+              Payload.$: $
+          Check run_cleaning_job:
+            Type: Choice
+            Choices:
+              - Variable: $.run_cleaning_job
+                BooleanEquals: true
+                Next: RunRoombaCleaningJobTest
+              - Variable: $.run_cleaning_job
+                BooleanEquals: false
+                Next: Success
+            Default: Fail
+          RunRoombaCleaningJobTest:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Next: Success
+            Parameters:
+              FunctionName: ${ExecuteRoombaCleaningJobArn}
+              Payload.$: $
+          Success:
+            Type: Pass
+            End: true
+          Fail:
+            Type: Fail
+            End: true
+      Logging:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt RoombaCleaningJobSchedulerLogGroup.Arn
+      Policies:
+        - AWSXrayWriteOnlyAccess
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: '*'
+        - LambdaInvokePolicy:
+            FunctionName: !Ref CheckRoombaExecutionCriteria
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ExecuteRoombaCleaningJob
+      Tracing:
+        Enabled: true
+      Type: STANDARD
+      DefinitionSubstitutions:
+        CheckRoombaExecutionCriteriaArn: !GetAtt CheckRoombaExecutionCriteria.Arn
+        ExecuteRoombaCleaningJobArn: !GetAtt ExecuteRoombaCleaningJob.Arn
+  RoombaCleaningJobSchedulerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub
+        - /aws/vendedlogs/states/${AWS::StackName}-${ResourceId}-Logs
+        - ResourceId: RoombaCleaningJobScheduler
+  InvokeCriteriaCheckHourlyToRoombaCleaningJobSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: !Sub scheduler.${AWS::URLSuffix}
+          Action: sts:AssumeRole
+          Condition:
+            ArnLike:
+              aws:SourceArn: !Sub
+                - arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/*/${AWS::StackName}-${ResourceId}-*
+                - ResourceId: InvokeCriteriaCheckHourly
+      Policies:
+        - PolicyName: StartExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref RoombaCleaningJobScheduler
+Transform: AWS::Serverless-2016-10-31
+Metadata:
+  AWS::Composer::Groups:
+    Group:
+      Label: RoombaCleaningSchedulerApplication
+      Members:
+        - ExecuteRoombaCleaningJob
+        - PhoneWifiConnectionState
+        - RoombaCleaningJobScheduler
+        - CheckRoombaExecutionCriteria
+        - RoomingCleaningJobHistory
+        - UpdatePhoneState
+        - InvokeCriteriaCheckHourly
