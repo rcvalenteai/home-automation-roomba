@@ -3,6 +3,9 @@ Roomba Automation Project
 
 This project is designed to automate the scheduling and execution of cleaning jobs for a Roomba vacuum cleaner, with the goal of minimizing the amount of time the Roomba runs while the house is occupied and maximizing the time it runs when the house is empty.
 
+1. ChatGPT was used to generate 95% of the code for this project synthetic dataset to train a reinforcement learning model to improve cleaning job runtime optimization.
+1. Improving functionality of project with a synthetic dataset using reinforcement learning, relying on ChatGPT for majority of code generation
+
 Functionality
 -------------
 
